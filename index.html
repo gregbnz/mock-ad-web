@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MockAD Web - Active Directory Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #1e1e1e;
+            color: #cccccc;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .toolbar {
+            background: linear-gradient(180deg, #2d2d30 0%, #252526 100%);
+            border-bottom: 1px solid #3f3f46;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar-btn {
+            background: #3c3c3c;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 4px 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .toolbar-btn:hover {
+            background: #4a4a4a;
+        }
+
+        .toolbar-separator {
+            width: 1px;
+            height: 20px;
+            background: #555;
+        }
+
+        .status-bar {
+            background: #007acc;
+            color: white;
+            padding: 2px 8px;
+            font-size: 11px;
+            border-top: 1px solid #005a9e;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .tree-panel {
+            width: 300px;
+            background: #252526;
+            border-right: 1px solid #3f3f46;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tree-header {
+            background: #2d2d30;
+            padding: 6px 8px;
+            border-bottom: 1px solid #3f3f46;
+            font-weight: 600;
+            color: #fff;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tree-content {
+            flex: 1;
+            overflow: auto;
+            padding: 4px 0;
+        }
+
+        .tree-node {
+            user-select: none;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            padding: 3px 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .tree-item:hover {
+            background: #2a2d2e;
+        }
+
+        .tree-item.selected {
+            background: #094771;
+        }
+
+        .tree-item.selected:hover {
+            background: #094771;
+        }
+
+        .tree-toggle {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #808080;
+            font-size: 10px;
+            flex-shrink: 0;
+        }
+
+        .tree-toggle.empty {
+            visibility: hidden;
+        }
+
+        .tree-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 4px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tree-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tree-children {
+            display: none;
+            padding-left: 16px;
+        }
+
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .details-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .details-tabs {
+            background: #2d2d30;
+            border-bottom: 1px solid #3f3f46;
+            display: flex;
+        }
+
+        .details-tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: #808080;
+        }
+
+        .details-tab:hover {
+            color: #ccc;
+        }
+
+        .details-tab.active {
+            color: #fff;
+            border-bottom-color: #007acc;
+        }
+
+        .details-content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .object-header {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #2d2d30;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+
+        .object-header-icon {
+            width: 48px;
+            height: 48px;
+            margin-right: 12px;
+        }
+
+        .object-header-info h2 {
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .object-header-info span {
+            color: #808080;
+            font-size: 11px;
+        }
+
+        .section {
+            background: #252526;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+
+        .section-header {
+            background: #2d2d30;
+            padding: 8px 12px;
+            border-bottom: 1px solid #3f3f46;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .section-content {
+            padding: 12px;
+        }
+
+        .property-row {
+            display: flex;
+            margin-bottom: 8px;
+        }
+
+        .property-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .property-label {
+            width: 140px;
+            color: #808080;
+            flex-shrink: 0;
+        }
+
+        .property-value {
+            color: #ccc;
+            word-break: break-all;
+        }
+
+        .markdown-content {
+            color: #ccc;
+            line-height: 1.6;
+        }
+
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            color: #fff;
+            margin: 16px 0 8px 0;
+        }
+
+        .markdown-content h1:first-child, .markdown-content h2:first-child, .markdown-content h3:first-child {
+            margin-top: 0;
+        }
+
+        .markdown-content p {
+            margin-bottom: 12px;
+        }
+
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+
+        .markdown-content th, .markdown-content td {
+            border: 1px solid #3f3f46;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .markdown-content th {
+            background: #2d2d30;
+            color: #fff;
+        }
+
+        .markdown-content code {
+            background: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .markdown-content pre {
+            background: #1e1e1e;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin: 12px 0;
+            padding-left: 24px;
+        }
+
+        .markdown-content li {
+            margin-bottom: 4px;
+        }
+
+        .counter-section {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .counter-item {
+            background: #1e1e1e;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .counter-icon {
+            width: 24px;
+            height: 24px;
+        }
+
+        .counter-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .counter-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .counter-label {
+            font-size: 10px;
+            color: #808080;
+        }
+
+        .icon-domain { color: #7ab51d; }
+        .icon-ou { color: #7ab51d; }
+        .icon-user { color: #4e9cdd; }
+        .icon-group { color: #7ab51d; }
+        .icon-computer { color: #7ab51d; }
+        .icon-gpo { color: #7ab51d; }
+        .icon-gmsa { color: #c19c00; }
+        .icon-default { color: #808080; }
+
+        .icon-large { font-size: 48px; }
+        .icon-medium { font-size: 24px; }
+        .icon-small { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="toolbar-btn" onclick="expandAll()">Expand All</button>
+        <button class="toolbar-btn" onclick="collapseAll()">Collapse All</button>
+    </div>
+
+    <div class="main-container">
+        <div class="tree-panel">
+            <div class="tree-header">Active Directory</div>
+            <div class="tree-content" id="treeContent"></div>
+        </div>
+
+        <div class="details-panel">
+            <div id="detailsPanel">
+                <div class="details-tabs">
+                    <div class="details-tab active">General</div>
+                </div>
+                <div class="details-content" id="detailsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span id="statusBar">Ready</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        const adData = {
+            "Name": "corp.local",
+            "Type": "Domain",
+            "Description": "",
+            "Children": [
+                {
+                    "Name": "Tier 0",
+                    "Type": "OU",
+                    "Description": "# Tier 0 - Identity & Control Plane\r\n\r\n## What lives here:\r\n\r\n| Category        | Item                          | Description / Rule                                      |\r\n|----------------|-------------------------------|----------------------------------------------------------|\r\n| Machine        | Domain Controllers            | Core AD authentication and authorization                 |\r\n| Machine        | ADCS                          | Certificate services for identity infrastructure         |\r\n| Machine        | ADFS                          | Federation and claims-based authentication               |\r\n| Machine        | Azure AD Connect              | Syncs on-prem AD with Entra ID                           |\r\n| Machine        | Cisco DUO Proxy Servers       | MFA integration for authentication flows                 |\r\n| Machine        | Privileged Access Workstations| Hardened admin-only systems for Tier 0 access            |\r\n| Account/Group  | Domain Admins                 | Full control over domain                                 |\r\n| Account/Group  | Enterprise Admins             | Forest-wide administrative control                       |\r\n| Account/Group  | Schema Admins                 | Control over AD schema                                   |\r\n| Policy         | Tier Isolation                | Block access from lower tiers                            |\r\n| Policy         | Internet Restrictions         | No web browsing or email allowed                         |\r\n\r\n### Machines\r\n* Domain Controllers\r\n* ADCS\r\n* ADFS\r\n* Azure AD Connect\r\n* Cisco DUO Proxy Servers\r\n* Privileged Access Workstations (PAWs)\r\n    * Utilized only by assigned users\r\n\r\n### Accounts/Groups\r\n* Domain Admins\r\n* Enterprise Admins\r\n* Schema Admins\r\n\r\n### Policies\r\n* Prevent access from lower tiers\r\n* Prevent web browsing\r\n* etc.\r\n\r\n## Rules\r\n\u274C Never log into Tier 0 from lower tiers\r\n\r\n\u274C No internet browsing/email from Tier 0 systems\r\n\r\n\u2705 Only log in from hardened PAWs\r\n\r\n\u2705 Separate admin accounts (no dual-use)",
+                    "Children": [
+                        {
+                            "Name": "Tier 0 Access Policy",
+                            "Type": "GPO",
+                            "Description": "",
+                            "Children": []
+                        },
+                        {
+                            "Name": "Computers",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "CORP-PAW-T0-jdoe",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-PAW-T0-jsmith",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Groups",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "Access-T0",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "t0-jdoe",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        },
+                                        {
+                                            "Name": "t0-jsmith",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Name": "Domain Admins",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "t0-jdoe",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        },
+                                        {
+                                            "Name": "t0-jsmith",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Name": "Enterprise Admins",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "Domain Admins",
+                                            "Type": "Group",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Name": "Schema Admins",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "Domain Admins",
+                                            "Type": "Group",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Servers",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "CORP-CA-01",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-CA-02",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-DC-01",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-DC-02",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-ENTRACONNECT-01",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "CORP-ENTRACONNECT-02",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Service Accounts",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "svc-backup",
+                                    "Type": "GMSA",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "svc-identity",
+                                    "Type": "GMSA",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Users",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "t0-jdoe",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "t0-jsmith",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "Name": "Tier 1",
+                    "Type": "OU",
+                    "Description": "",
+                    "Children": [
+                        {
+                            "Name": "Tier 1 Access Policy",
+                            "Type": "GPO",
+                            "Description": "",
+                            "Children": []
+                        },
+                        {
+                            "Name": "Computers",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "CORP-APP-01",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Groups",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "Access-T1",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "t1-jdoe",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        },
+                                        {
+                                            "Name": "t1-jsmith",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        },
+                                        {
+                                            "Name": "t1-mchief",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Name": "Application Administrators",
+                                    "Type": "Group",
+                                    "Description": "",
+                                    "Children": [
+                                        {
+                                            "Name": "t1-mchief",
+                                            "Type": "User",
+                                            "Description": "",
+                                            "Children": []
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Service Accounts",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "svc-ldap",
+                                    "Type": "GMSA",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Users",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "t1-jdoe",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "t1-jsmith",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "t1-mchief",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "Name": "Tier 2",
+                    "Type": "OU",
+                    "Description": "",
+                    "Children": [
+                        {
+                            "Name": "Tier 2 Access Policy",
+                            "Type": "GPO",
+                            "Description": "",
+                            "Children": []
+                        },
+                        {
+                            "Name": "Computers",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "CORP-LAPTOP-1",
+                                    "Type": "Computer",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        },
+                        {
+                            "Name": "Groups",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": []
+                        },
+                        {
+                            "Name": "Users",
+                            "Type": "OU",
+                            "Description": "",
+                            "Children": [
+                                {
+                                    "Name": "jdoe",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "jsmith",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "mchief",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "mjane",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                },
+                                {
+                                    "Name": "pwhite",
+                                    "Type": "User",
+                                    "Description": "",
+                                    "Children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        function getIcon(type) {
+            const icons = {
+                'Domain': { symbol: '&#x1F3E6;', class: 'icon-domain' },
+                'OU': { symbol: '&#x1F4C1;', class: 'icon-ou' },
+                'User': { symbol: '&#x1F464;', class: 'icon-user' },
+                'Group': { symbol: '&#x1F465;', class: 'icon-group' },
+                'Computer': { symbol: '&#x1F5A5;', class: 'icon-computer' },
+                'GPO': { symbol: '&#x1F4DC;', class: 'icon-gpo' },
+                'GMSA': { symbol: '&#x2699;', class: 'icon-gmsa' }
+            };
+            const icon = icons[type] || { symbol: '&#x1F4CC;', class: 'icon-default' };
+            return `<span class="icon-small ${icon.class}">${icon.symbol}</span>`;
+        }
+
+        function getLargeIcon(type) {
+            const icons = {
+                'Domain': { symbol: '&#x1F3E6;', class: 'icon-domain' },
+                'OU': { symbol: '&#x1F4C1;', class: 'icon-ou' },
+                'User': { symbol: '&#x1F464;', class: 'icon-user' },
+                'Group': { symbol: '&#x1F465;', class: 'icon-group' },
+                'Computer': { symbol: '&#x1F5A5;', class: 'icon-computer' },
+                'GPO': { symbol: '&#x1F4DC;', class: 'icon-gpo' },
+                'GMSA': { symbol: '&#x2699;', class: 'icon-gmsa' }
+            };
+            const icon = icons[type] || { symbol: '&#x1F4CC;', class: 'icon-default' };
+            return `<span class="icon-large ${icon.class}">${icon.symbol}</span>`;
+        }
+
+        function getMediumIcon(type) {
+            const icons = {
+                'Domain': { symbol: '&#x1F3E6;', class: 'icon-domain' },
+                'OU': { symbol: '&#x1F4C1;', class: 'icon-ou' },
+                'User': { symbol: '&#x1F464;', class: 'icon-user' },
+                'Group': { symbol: '&#x1F465;', class: 'icon-group' },
+                'Computer': { symbol: '&#x1F5A5;', class: 'icon-computer' },
+                'GPO': { symbol: '&#x1F4DC;', class: 'icon-gpo' },
+                'GMSA': { symbol: '&#x2699;', class: 'icon-gmsa' }
+            };
+            const icon = icons[type] || { symbol: '&#x1F4CC;', class: 'icon-default' };
+            return `<span class="icon-medium ${icon.class}">${icon.symbol}</span>`;
+        }
+
+        function renderTree(node, container, path = '') {
+            const nodeId = path ? `${path}-${node.Name}` : node.Name;
+            const hasChildren = node.Children && node.Children.length > 0;
+            
+            const nodeDiv = document.createElement('div');
+            nodeDiv.className = 'tree-node';
+
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'tree-item';
+            itemDiv.dataset.nodeId = nodeId;
+            itemDiv.dataset.nodeData = JSON.stringify(node);
+            itemDiv.innerHTML = `
+                <span class="tree-toggle ${hasChildren ? '' : 'empty'}">&#x25B6;</span>
+                <span class="tree-icon">${getIcon(node.Type)}</span>
+                <span class="tree-label">${node.Name}</span>
+            `;
+
+            itemDiv.onclick = (e) => {
+                e.stopPropagation();
+                const toggle = itemDiv.querySelector('.tree-toggle');
+                if (hasChildren && e.target === toggle) {
+                    toggleNode(itemDiv, toggle);
+                }
+                selectNode(node, itemDiv);
+            };
+
+            nodeDiv.appendChild(itemDiv);
+
+            if (hasChildren) {
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'tree-children';
+                
+                node.Children.forEach((child, index) => {
+                    renderTree(child, childrenDiv, `${nodeId}-${index}`);
+                });
+
+                nodeDiv.appendChild(childrenDiv);
+            }
+
+            container.appendChild(nodeDiv);
+        }
+
+        function toggleNode(itemDiv, toggle) {
+            const childrenDiv = itemDiv.nextElementSibling;
+            if (childrenDiv && childrenDiv.classList.contains('tree-children')) {
+                if (childrenDiv.classList.contains('expanded')) {
+                    childrenDiv.classList.remove('expanded');
+                    toggle.innerHTML = '&#x25B6;';
+                } else {
+                    childrenDiv.classList.add('expanded');
+                    toggle.innerHTML = '&#x25BC;';
+                }
+            }
+        }
+
+        function selectNode(node, itemDiv) {
+            document.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
+            itemDiv.classList.add('selected');
+            renderDetails(node);
+            updateStatus(`Selected: ${node.Name} (${node.Type})`);
+        }
+
+        function renderDetails(node) {
+            const detailsContent = document.getElementById('detailsContent');
+            const counts = countObjects(node);
+
+            let descriptionHtml = '';
+            if (node.Description) {
+                descriptionHtml = `
+                    <div class="section">
+                        <div class="section-header">Description</div>
+                        <div class="section-content">
+                            <div class="markdown-content">${marked.parse(node.Description)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            detailsContent.innerHTML = `
+                <div class="object-header">
+                    <div class="object-header-icon">${getLargeIcon(node.Type)}</div>
+                    <div class="object-header-info">
+                        <h2>${node.Name}</h2>
+                        <span>${node.Type}</span>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Object Info</div>
+                    <div class="section-content">
+                        <div class="property-row">
+                            <span class="property-label">Name:</span>
+                            <span class="property-value">${node.Name}</span>
+                        </div>
+                        <div class="property-row">
+                            <span class="property-label">Type:</span>
+                            <span class="property-value">${node.Type}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${descriptionHtml}
+
+                <div class="section">
+                    <div class="section-header">Object Summary</div>
+                    <div class="section-content">
+                        <div class="counter-section">
+                            ${counts.Computers ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('Computer')}</div><div class="counter-info"><span class="counter-value">${counts.Computers}</span><span class="counter-label">Computers</span></div></div>` : ''}
+                            ${counts.Users ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('User')}</div><div class="counter-info"><span class="counter-value">${counts.Users}</span><span class="counter-label">Users</span></div></div>` : ''}
+                            ${counts.Groups ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('Group')}</div><div class="counter-info"><span class="counter-value">${counts.Groups}</span><span class="counter-label">Groups</span></div></div>` : ''}
+                            ${counts.GMSAs ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('GMSA')}</div><div class="counter-info"><span class="counter-value">${counts.GMSAs}</span><span class="counter-label">GMSAs</span></div></div>` : ''}
+                            ${counts.GPOs ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('GPO')}</div><div class="counter-info"><span class="counter-value">${counts.GPOs}</span><span class="counter-label">GPOs</span></div></div>` : ''}
+                            ${counts.OUs ? `<div class="counter-item"><div class="counter-icon">${getMediumIcon('OU')}</div><div class="counter-info"><span class="counter-value">${counts.OUs}</span><span class="counter-label">OUs</span></div></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function countObjects(node, counts = { Computers: 0, Users: 0, Groups: 0, GMSAs: 0, GPOs: 0, OUs: 0 }) {
+            if (!node) return counts;
+
+            switch (node.Type) {
+                case 'Computer': counts.Computers++; break;
+                case 'User': counts.Users++; break;
+                case 'Group': counts.Groups++; break;
+                case 'GMSA': counts.GMSAs++; break;
+                case 'GPO': counts.GPOs++; break;
+                case 'OU': counts.OUs++; break;
+            }
+
+            if (node.Children) {
+                node.Children.forEach(child => countObjects(child, counts));
+            }
+
+            return counts;
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusBar').textContent = message;
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.tree-children').forEach(el => el.classList.add('expanded'));
+            document.querySelectorAll('.tree-toggle:not(.empty)').forEach(el => el.innerHTML = '&#x25BC;');
+            updateStatus('Expanded all nodes');
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.tree-children').forEach(el => el.classList.remove('expanded'));
+            document.querySelectorAll('.tree-toggle:not(.empty)').forEach(el => el.innerHTML = '&#x25B6;');
+            updateStatus('Collapsed all nodes');
+        }
+
+        function renderTreeView() {
+            const treeContent = document.getElementById('treeContent');
+            treeContent.innerHTML = '';
+            renderTree(adData, treeContent);
+        }
+
+        function initialize() {
+            renderTreeView();
+            expandAll();
+            selectNode(adData, document.querySelector('.tree-item'));
+            updateStatus('Ready - corp.local domain loaded');
+        }
+
+        initialize();
+    </script>
+</body>
+</html>
