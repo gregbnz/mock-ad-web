@@ -359,12 +359,136 @@
         .icon-large { font-size: 48px; }
         .icon-medium { font-size: 24px; }
         .icon-small { font-size: 14px; }
+
+        .context-menu {
+            position: absolute;
+            background: #2d2d30;
+            border: 1px solid #3f3f46;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            min-width: 180px;
+            padding: 4px 0;
+        }
+
+        .context-menu-item {
+            padding: 6px 16px;
+            cursor: pointer;
+            color: #ccc;
+            white-space: nowrap;
+        }
+
+        .context-menu-item:hover {
+            background: #094771;
+            color: #fff;
+        }
+
+        .context-menu-item.danger:hover {
+            background: #a1260d;
+            color: #fff;
+        }
+
+        .context-menu-separator {
+            height: 1px;
+            background: #3f3f46;
+            margin: 4px 0;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal-box {
+            background: #252526;
+            border: 1px solid #3f3f46;
+            border-radius: 6px;
+            width: 360px;
+            padding: 16px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+        }
+
+        .modal-title {
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .modal-field {
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .modal-field label {
+            color: #808080;
+            font-size: 11px;
+        }
+
+        .modal-field input,
+        .modal-field select,
+        .modal-field textarea {
+            background: #3c3c3c;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 6px 8px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        .modal-field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .modal-btn {
+            padding: 6px 14px;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 1px solid #555;
+            background: #3c3c3c;
+            color: #ccc;
+            font-size: 12px;
+        }
+
+        .modal-btn:hover {
+            background: #4a4a4a;
+        }
+
+        .modal-btn.primary {
+            background: #0e639c;
+            border-color: #1177bb;
+            color: #fff;
+        }
+
+        .modal-btn.primary:hover {
+            background: #1177bb;
+        }
     </style>
 </head>
 <body>
     <div class="toolbar">
         <button class="toolbar-btn" onclick="expandAll()">Expand All</button>
         <button class="toolbar-btn" onclick="collapseAll()">Collapse All</button>
+        <div class="toolbar-separator"></div>
+        <button class="toolbar-btn" onclick="exportLayout()">Export JSON</button>
+        <button class="toolbar-btn" onclick="document.getElementById('importFileInput').click()">Import JSON</button>
+        <input type="file" id="importFileInput" accept=".json,application/json" style="display:none">
     </div>
 
     <div class="main-container">
@@ -389,8 +513,12 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
-        const adData = {
-            "Name": "corp.local",
+        let nodeIdCounter = 0;
+        let expandedIds = new Set();
+        let selectedId = null;
+
+        let adData = {
+            "Name": "ad.corp.com",
             "Type": "Domain",
             "Description": "",
             "Children": [
@@ -801,21 +929,25 @@
             return `<span class="icon-medium ${icon.class}">${icon.symbol}</span>`;
         }
 
-        function renderTree(node, container, path = '') {
-            const nodeId = path ? `${path}-${node.Name}` : node.Name;
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str === null || str === undefined ? '' : String(str);
+            return div.innerHTML;
+        }
+
+        function renderTree(node, container) {
             const hasChildren = node.Children && node.Children.length > 0;
-            
+
             const nodeDiv = document.createElement('div');
             nodeDiv.className = 'tree-node';
 
             const itemDiv = document.createElement('div');
             itemDiv.className = 'tree-item';
-            itemDiv.dataset.nodeId = nodeId;
-            itemDiv.dataset.nodeData = JSON.stringify(node);
+            itemDiv.dataset.id = node._id;
             itemDiv.innerHTML = `
                 <span class="tree-toggle ${hasChildren ? '' : 'empty'}">&#x25B6;</span>
                 <span class="tree-icon">${getIcon(node.Type)}</span>
-                <span class="tree-label">${node.Name}</span>
+                <span class="tree-label">${escapeHtml(node.Name)}</span>
             `;
 
             itemDiv.onclick = (e) => {
@@ -827,15 +959,15 @@
                 selectNode(node, itemDiv);
             };
 
+            itemDiv.oncontextmenu = (e) => showContextMenu(e, node);
+
             nodeDiv.appendChild(itemDiv);
 
             if (hasChildren) {
                 const childrenDiv = document.createElement('div');
                 childrenDiv.className = 'tree-children';
-                
-                node.Children.forEach((child, index) => {
-                    renderTree(child, childrenDiv, `${nodeId}-${index}`);
-                });
+
+                node.Children.forEach(child => renderTree(child, childrenDiv));
 
                 nodeDiv.appendChild(childrenDiv);
             }
@@ -844,14 +976,17 @@
         }
 
         function toggleNode(itemDiv, toggle) {
+            const id = parseInt(itemDiv.dataset.id, 10);
             const childrenDiv = itemDiv.nextElementSibling;
             if (childrenDiv && childrenDiv.classList.contains('tree-children')) {
                 if (childrenDiv.classList.contains('expanded')) {
                     childrenDiv.classList.remove('expanded');
                     toggle.innerHTML = '&#x25B6;';
+                    expandedIds.delete(id);
                 } else {
                     childrenDiv.classList.add('expanded');
                     toggle.innerHTML = '&#x25BC;';
+                    expandedIds.add(id);
                 }
             }
         }
@@ -859,8 +994,340 @@
         function selectNode(node, itemDiv) {
             document.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
             itemDiv.classList.add('selected');
+            selectedId = node._id;
             renderDetails(node);
             updateStatus(`Selected: ${node.Name} (${node.Type})`);
+        }
+
+        function restoreTreeState() {
+            document.querySelectorAll('.tree-item').forEach(item => {
+                const id = parseInt(item.dataset.id, 10);
+                const childrenDiv = item.nextElementSibling;
+                const toggle = item.querySelector('.tree-toggle');
+                if (expandedIds.has(id) && childrenDiv && childrenDiv.classList.contains('tree-children')) {
+                    childrenDiv.classList.add('expanded');
+                    if (toggle) toggle.innerHTML = '&#x25BC;';
+                }
+                if (id === selectedId) {
+                    item.classList.add('selected');
+                }
+            });
+
+            if (selectedId !== null) {
+                const node = findNodeById(adData, selectedId);
+                if (node) renderDetails(node);
+            }
+        }
+
+        function findNodeById(node, id) {
+            if (node._id === id) return node;
+            if (node.Children) {
+                for (const child of node.Children) {
+                    const found = findNodeById(child, id);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function findParent(node, id) {
+            if (!node.Children) return null;
+            for (const child of node.Children) {
+                if (child._id === id) return node;
+                const found = findParent(child, id);
+                if (found) return found;
+            }
+            return null;
+        }
+
+        function cloneNode(node, isTop = true) {
+            return {
+                Name: isTop ? `${node.Name} - Copy` : node.Name,
+                Type: node.Type,
+                Description: node.Description || '',
+                Children: (node.Children || []).map(child => cloneNode(child, false)),
+                _id: nodeIdCounter++
+            };
+        }
+
+        function duplicateNode(node) {
+            const parent = findParent(adData, node._id);
+            if (!parent) {
+                updateStatus('Cannot duplicate the root domain object');
+                return;
+            }
+            const clone = cloneNode(node);
+            const idx = parent.Children.findIndex(c => c._id === node._id);
+            parent.Children.splice(idx + 1, 0, clone);
+            expandedIds.add(parent._id);
+            selectedId = clone._id;
+            renderTreeView();
+            updateStatus(`Duplicated "${node.Name}" as "${clone.Name}"`);
+        }
+
+        function deleteNodeConfirm(node) {
+            const parent = findParent(adData, node._id);
+            if (!parent) {
+                updateStatus('Cannot delete the root domain object');
+                return;
+            }
+            const hasKids = node.Children && node.Children.length > 0;
+            const msg = `Delete "${node.Name}" (${node.Type})${hasKids ? ' and all of its child objects' : ''}?`;
+            if (!confirm(msg)) return;
+            parent.Children = parent.Children.filter(c => c._id !== node._id);
+            if (selectedId === node._id) selectedId = adData._id;
+            renderTreeView();
+            updateStatus(`Deleted "${node.Name}"`);
+        }
+
+        function closeContextMenu() {
+            const existing = document.getElementById('activeContextMenu');
+            if (existing) existing.remove();
+        }
+
+        function showContextMenu(e, node) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeContextMenu();
+
+            const menu = document.createElement('div');
+            menu.className = 'context-menu';
+            menu.id = 'activeContextMenu';
+
+            const addBtn = document.createElement('div');
+            addBtn.className = 'context-menu-item';
+            addBtn.textContent = 'Add Child Object...';
+            addBtn.onclick = () => { closeContextMenu(); openAddChildModal(node); };
+            menu.appendChild(addBtn);
+
+            const renameBtn = document.createElement('div');
+            renameBtn.className = 'context-menu-item';
+            renameBtn.textContent = 'Rename...';
+            renameBtn.onclick = () => { closeContextMenu(); openRenameModal(node); };
+            menu.appendChild(renameBtn);
+
+            if (node !== adData) {
+                const sep = document.createElement('div');
+                sep.className = 'context-menu-separator';
+                menu.appendChild(sep);
+
+                const dupBtn = document.createElement('div');
+                dupBtn.className = 'context-menu-item';
+                dupBtn.textContent = 'Duplicate';
+                dupBtn.onclick = () => { closeContextMenu(); duplicateNode(node); };
+                menu.appendChild(dupBtn);
+
+                const delBtn = document.createElement('div');
+                delBtn.className = 'context-menu-item danger';
+                delBtn.textContent = 'Delete';
+                delBtn.onclick = () => { closeContextMenu(); deleteNodeConfirm(node); };
+                menu.appendChild(delBtn);
+            }
+
+            document.body.appendChild(menu);
+            menu.style.left = e.pageX + 'px';
+            menu.style.top = e.pageY + 'px';
+
+            const rect = menu.getBoundingClientRect();
+            if (rect.right > window.innerWidth) {
+                menu.style.left = Math.max(8, window.innerWidth - rect.width - 8) + 'px';
+            }
+            if (rect.bottom > window.innerHeight) {
+                menu.style.top = Math.max(8, window.innerHeight - rect.height - 8) + 'px';
+            }
+
+            setTimeout(() => {
+                document.addEventListener('click', closeContextMenu, { once: true });
+            }, 0);
+        }
+
+        function openAddChildModal(parentNode) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+                <div class="modal-box">
+                    <div class="modal-title">Add Child Object to "${escapeHtml(parentNode.Name)}"</div>
+                    <div class="modal-field">
+                        <label>Object Type</label>
+                        <select id="modalType">
+                            <option value="OU">Organizational Unit</option>
+                            <option value="GPO">GPO</option>
+                            <option value="Group">Group</option>
+                            <option value="Computer">Computer</option>
+                            <option value="User">User</option>
+                            <option value="GMSA">Service Account (GMSA)</option>
+                        </select>
+                    </div>
+                    <div class="modal-field">
+                        <label>Name</label>
+                        <input type="text" id="modalName" placeholder="Object name">
+                    </div>
+                    <div class="modal-field">
+                        <label>Description (optional, Markdown supported)</label>
+                        <textarea id="modalDescription" placeholder="Description..."></textarea>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="modal-btn" id="modalCancel">Cancel</button>
+                        <button class="modal-btn primary" id="modalAdd">Add</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const nameInput = overlay.querySelector('#modalName');
+            nameInput.focus();
+
+            function close() {
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+            function escHandler(e) {
+                if (e.key === 'Escape') close();
+            }
+
+            overlay.querySelector('#modalCancel').onclick = close;
+            overlay.onclick = (e) => { if (e.target === overlay) close(); };
+            document.addEventListener('keydown', escHandler);
+
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') overlay.querySelector('#modalAdd').click();
+            });
+
+            overlay.querySelector('#modalAdd').onclick = () => {
+                const name = nameInput.value.trim();
+                if (!name) {
+                    nameInput.focus();
+                    return;
+                }
+                const type = overlay.querySelector('#modalType').value;
+                const description = overlay.querySelector('#modalDescription').value;
+
+                const newNode = {
+                    Name: name,
+                    Type: type,
+                    Description: description,
+                    Children: [],
+                    _id: nodeIdCounter++
+                };
+
+                parentNode.Children = parentNode.Children || [];
+                parentNode.Children.push(newNode);
+                expandedIds.add(parentNode._id);
+                selectedId = newNode._id;
+                close();
+                renderTreeView();
+                updateStatus(`Added ${type} "${name}" under "${parentNode.Name}"`);
+            };
+        }
+
+        function openRenameModal(node) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+                <div class="modal-box">
+                    <div class="modal-title">Rename "${escapeHtml(node.Name)}"</div>
+                    <div class="modal-field">
+                        <label>Name</label>
+                        <input type="text" id="modalRenameName" placeholder="Object name">
+                    </div>
+                    <div class="modal-actions">
+                        <button class="modal-btn" id="modalCancel">Cancel</button>
+                        <button class="modal-btn primary" id="modalRename">Rename</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const nameInput = overlay.querySelector('#modalRenameName');
+            nameInput.value = node.Name;
+            nameInput.focus();
+            nameInput.select();
+
+            function close() {
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+            function escHandler(e) {
+                if (e.key === 'Escape') close();
+            }
+
+            overlay.querySelector('#modalCancel').onclick = close;
+            overlay.onclick = (e) => { if (e.target === overlay) close(); };
+            document.addEventListener('keydown', escHandler);
+
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') overlay.querySelector('#modalRename').click();
+            });
+
+            overlay.querySelector('#modalRename').onclick = () => {
+                const name = nameInput.value.trim();
+                if (!name) {
+                    nameInput.focus();
+                    return;
+                }
+                const oldName = node.Name;
+                node.Name = name;
+                close();
+                renderTreeView();
+                updateStatus(`Renamed "${oldName}" to "${name}"`);
+            };
+        }
+
+        function stripInternal(node) {
+            return {
+                Name: node.Name,
+                Type: node.Type,
+                Description: node.Description || '',
+                Children: (node.Children || []).map(stripInternal)
+            };
+        }
+
+        function exportLayout() {
+            const data = stripInternal(adData);
+            const json = JSON.stringify(data, null, 4);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${(adData.Name || 'ad-layout').replace(/[^a-z0-9.-]/gi, '_')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            updateStatus('Exported AD layout to JSON');
+        }
+
+        function normalizeAndAssignIds(node) {
+            node.Children = Array.isArray(node.Children) ? node.Children : [];
+            node.Description = node.Description || '';
+            node.Type = node.Type || 'OU';
+            node.Name = node.Name || 'Unnamed';
+            node._id = nodeIdCounter++;
+            node.Children.forEach(normalizeAndAssignIds);
+            return node;
+        }
+
+        function importLayoutFile(file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const parsed = JSON.parse(ev.target.result);
+                    if (!parsed || typeof parsed !== 'object' || !parsed.Name || !parsed.Type) {
+                        throw new Error('root object must have "Name" and "Type" fields');
+                    }
+                    nodeIdCounter = 0;
+                    adData = normalizeAndAssignIds(parsed);
+                    expandedIds = new Set();
+                    selectedId = adData._id;
+                    renderTreeView();
+                    expandAll();
+                    updateStatus(`Imported AD layout from "${file.name}"`);
+                } catch (err) {
+                    alert('Failed to import JSON file:\n' + err.message);
+                }
+            };
+            reader.onerror = () => alert('Failed to read the selected file.');
+            reader.readAsText(file);
         }
 
         function renderDetails(node) {
@@ -883,8 +1350,8 @@
                 <div class="object-header">
                     <div class="object-header-icon">${getLargeIcon(node.Type)}</div>
                     <div class="object-header-info">
-                        <h2>${node.Name}</h2>
-                        <span>${node.Type}</span>
+                        <h2>${escapeHtml(node.Name)}</h2>
+                        <span>${escapeHtml(node.Type)}</span>
                     </div>
                 </div>
 
@@ -893,11 +1360,11 @@
                     <div class="section-content">
                         <div class="property-row">
                             <span class="property-label">Name:</span>
-                            <span class="property-value">${node.Name}</span>
+                            <span class="property-value">${escapeHtml(node.Name)}</span>
                         </div>
                         <div class="property-row">
                             <span class="property-label">Type:</span>
-                            <span class="property-value">${node.Type}</span>
+                            <span class="property-value">${escapeHtml(node.Type)}</span>
                         </div>
                     </div>
                 </div>
@@ -944,12 +1411,14 @@
         }
 
         function expandAll() {
+            document.querySelectorAll('.tree-item').forEach(item => expandedIds.add(parseInt(item.dataset.id, 10)));
             document.querySelectorAll('.tree-children').forEach(el => el.classList.add('expanded'));
             document.querySelectorAll('.tree-toggle:not(.empty)').forEach(el => el.innerHTML = '&#x25BC;');
             updateStatus('Expanded all nodes');
         }
 
         function collapseAll() {
+            expandedIds.clear();
             document.querySelectorAll('.tree-children').forEach(el => el.classList.remove('expanded'));
             document.querySelectorAll('.tree-toggle:not(.empty)').forEach(el => el.innerHTML = '&#x25B6;');
             updateStatus('Collapsed all nodes');
@@ -959,13 +1428,21 @@
             const treeContent = document.getElementById('treeContent');
             treeContent.innerHTML = '';
             renderTree(adData, treeContent);
+            restoreTreeState();
         }
 
         function initialize() {
+            normalizeAndAssignIds(adData);
+            selectedId = adData._id;
             renderTreeView();
             expandAll();
-            selectNode(adData, document.querySelector('.tree-item'));
-            updateStatus('Ready - corp.local domain loaded');
+            updateStatus('Ready - ad.corp.com domain loaded');
+
+            document.getElementById('importFileInput').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) importLayoutFile(file);
+                e.target.value = '';
+            });
         }
 
         initialize();
